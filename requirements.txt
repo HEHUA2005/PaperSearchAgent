@@ -1,0 +1,17 @@
+# A2A Protocol Dependencies
+a2a>=0.1.0
+
+# Web Server
+uvicorn>=0.17.6
+starlette>=0.19.1
+
+# API Clients
+arxiv>=1.4.2
+semanticscholar>=0.4.0
+httpx>=0.23.0
+openai>=1.0.0
+
+# Utilities
+python-dotenv>=0.20.0
+pydantic>=1.9.1
+tenacity>=8.0.1

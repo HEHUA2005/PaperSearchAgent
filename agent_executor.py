@@ -133,6 +133,9 @@ class PaperSearchAgentExecutor(AgentExecutor):
             context: The request context
             event_queue: The event queue for sending messages
         """
+        logger.info(
+            "+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++"
+        )
         logger.info("Executing PaperSearchAgentExecutor")
 
         # Extract message from context
@@ -163,11 +166,15 @@ class PaperSearchAgentExecutor(AgentExecutor):
 
             # Send response
             await event_queue.enqueue_event(new_agent_text_message(response))
+            logger.info(f"Response sent: {response}")
 
         except Exception as e:
             logger.error(f"Error in PaperSearchAgentExecutor.execute: {e}")
             error_message = f"An error occurred while processing your request: {str(e)}"
             await event_queue.enqueue_event(new_agent_text_message(error_message))
+        logger.info(
+            "+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++"
+        )
 
     async def cancel(self, context: RequestContext, event_queue: EventQueue) -> None:
         """

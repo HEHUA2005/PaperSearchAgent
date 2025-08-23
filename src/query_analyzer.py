@@ -120,6 +120,8 @@ class QueryAnalyzer:
             Analyze the following academic paper search query and extract relevant English keywords.
             If the query is in a non-English language (especially Chinese), translate the key concepts to English.
             If the query is unclear or doesn't appear to be a search for academic papers, indicate that it's invalid.
+            请你注意, 在请求中, 可能包含一些复杂的项目格式等等, 在这种情况下, 请你重点关注请求中"你的任务"等关键词, 避免错误判断请求的有效性
+            
 
             Query: "{query}"
 

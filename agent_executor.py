@@ -83,7 +83,7 @@ class PaperSearchAgent:
         is_valid, search_query, keywords = await self.analyze_query(query)
 
         if not is_valid:
-            return f"Your query seems unclear or incomplete. Please provide more specific details about the academic papers you're looking for. Original query: '{query}'"
+            return "Your query seems unclear or incomplete. Please provide more specific details about the academic papers you're looking for."
 
         # If query was modified (e.g., translated from Chinese to English), log it
         if search_query != query:

@@ -116,6 +116,7 @@ curl -X POST http://localhost:9998/api/jsonrpc \
 - `SEMANTIC_SCHOLAR_API_KEY`：Semantic Scholar API 密钥（可选）
 - `ENABLE_SEMANTIC_SCHOLAR`：是否启用 Semantic Scholar 搜索（默认：false）
 - `MAX_SEARCH_RESULTS`：最大搜索结果数（默认：5）
+- `ENABLE_PDF_URL_ENHANCEMENT`：是否启用增强的 PDF URL 提取（默认：true）
 
 ### 查询分析配置
 
@@ -127,6 +128,22 @@ curl -X POST http://localhost:9998/api/jsonrpc \
 - `LLM_MAX_TOKENS`：最大生成令牌数（默认：4096）
 - `LLM_TEMPERATURE`：生成温度（默认：0.3）
 - `USE_FALLBACK_ON_LLM_ERROR`：LLM API 调用失败时是否使用原始查询作为回退（默认：false）
+
+### PDF URL 增强配置
+
+- `ENABLE_PDF_URL_ENHANCEMENT`：启用增强的 PDF URL 提取功能（默认：true）
+  - 当启用时，系统会尝试从多个来源获取 PDF 链接：
+    - Semantic Scholar 的 openAccessPdf 字段
+    - 通过 arXiv ID 构建 arXiv PDF 链接
+    - 通过 PubMed/PMC ID 构建医学论文链接
+    - 通过 DOI 识别以下来源的 PDF：
+      - bioRxiv/medRxiv 预印本服务器
+      - Nature 期刊
+      - Science 期刊
+      - IEEE 论文
+      - ACM 数字图书馆
+      - 其他通用 DOI 链接
+  - 当禁用时，仅使用 Semantic Scholar 的 openAccessPdf 字段
 
 ## A2A 协议集成
 

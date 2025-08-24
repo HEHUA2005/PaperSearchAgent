@@ -20,6 +20,11 @@ MAX_SEARCH_RESULTS = int(os.getenv("MAX_SEARCH_RESULTS", "5"))
 SEARCH_SOURCE = os.getenv("SEARCH_SOURCE", "semantic_scholar").strip().lower()
 SEMANTIC_SCHOLAR_SORT = os.getenv("SEMANTIC_SCHOLAR_SORT", "citationCount:desc")
 
+# PDF URL Enhancement Configuration
+ENABLE_PDF_URL_ENHANCEMENT = (
+    os.getenv("ENABLE_PDF_URL_ENHANCEMENT", "true").lower() == "true"
+)
+
 # Validate search source
 if SEARCH_SOURCE not in ["arxiv", "semantic_scholar"]:
     print(

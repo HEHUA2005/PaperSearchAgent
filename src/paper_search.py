@@ -15,6 +15,7 @@ from config import (
     MAX_SEARCH_RESULTS,
     SEARCH_SOURCE,
     SEMANTIC_SCHOLAR_SORT,
+    ENABLE_PDF_URL_ENHANCEMENT,
 )
 
 # Configure logging
@@ -99,6 +100,111 @@ class PaperSearch:
         else:
             self.s2_client = None
             logger.info("Semantic Scholar is disabled")
+
+    def _extract_enhanced_pdf_urls(self, paper) -> Optional[str]:
+        """
+        Extract PDF URLs from paper data using multiple strategies.
+
+        Args:
+            paper: Semantic Scholar paper object
+
+        Returns:
+            First available PDF URL or None
+        """
+        pdf_urls = []
+
+        # Strategy 1: OpenAccess PDF from Semantic Scholar
+        open_access_pdf = getattr(paper, "openAccessPdf", None)
+        if open_access_pdf and hasattr(open_access_pdf, "url") and open_access_pdf.url:
+            pdf_urls.append(open_access_pdf.url)
+            logger.info(f"Found openAccessPdf URL: {open_access_pdf.url}")
+
+        # Strategy 2: Extract from externalIds
+        external_ids = getattr(paper, "externalIds", {})
+        if external_ids:
+            # arXiv PDF links
+            if "ArXiv" in external_ids:
+                arxiv_id = external_ids["ArXiv"]
+                arxiv_pdf_url = f"https://arxiv.org/pdf/{arxiv_id}.pdf"
+                pdf_urls.append(arxiv_pdf_url)
+                logger.info(f"Generated arXiv PDF URL: {arxiv_pdf_url}")
+
+            # PubMed Central - many medical papers
+            if (
+                "PubMed" in external_ids
+                or "PMID" in external_ids
+                or "PMC" in external_ids
+            ):
+                pmc_id = external_ids.get("PMC", "")
+                pmid = external_ids.get("PMID", "")
+                if pmc_id:
+                    pmc_pdf_url = (
+                        f"https://www.ncbi.nlm.nih.gov/pmc/articles/PMC{pmc_id}/pdf/"
+                    )
+                    pdf_urls.append(pmc_pdf_url)
+                    logger.info(f"Generated PMC PDF URL: {pmc_pdf_url}")
+                elif pmid:
+                    pubmed_url = f"https://pubmed.ncbi.nlm.nih.gov/{pmid}/"
+                    pdf_urls.append(pubmed_url)
+                    logger.info(f"Generated PubMed URL: {pubmed_url}")
+
+            # DOI-based PDF links for various repositories
+            if "DOI" in external_ids:
+                doi = external_ids["DOI"]
+
+                # bioRxiv and medRxiv papers
+                if "10.1101" in doi:
+                    biorxiv_pdf_url = (
+                        f"https://www.biorxiv.org/content/{doi}v1.full.pdf"
+                    )
+                    pdf_urls.append(biorxiv_pdf_url)
+                    logger.info(f"Generated bioRxiv PDF URL: {biorxiv_pdf_url}")
+
+                # Nature papers
+                if "10.1038" in doi:
+                    nature_pdf_url = f"https://www.nature.com/articles/{doi.replace('10.1038/', '')}.pdf"
+                    pdf_urls.append(nature_pdf_url)
+                    logger.info(f"Generated Nature PDF URL: {nature_pdf_url}")
+
+                # Science papers
+                if "10.1126" in doi:
+                    science_pdf_url = f"https://science.sciencemag.org/content/{doi.split('/')[-1]}.full.pdf"
+                    pdf_urls.append(science_pdf_url)
+                    logger.info(f"Generated Science PDF URL: {science_pdf_url}")
+
+                # IEEE papers
+                if "10.1109" in doi:
+                    ieee_pdf_url = f"https://ieeexplore.ieee.org/stamp/stamp.jsp?arnumber={doi.split('/')[-1]}"
+                    pdf_urls.append(ieee_pdf_url)
+                    logger.info(f"Generated IEEE PDF URL: {ieee_pdf_url}")
+
+                # ACM papers
+                if "10.1145" in doi:
+                    acm_pdf_url = f"https://dl.acm.org/doi/pdf/{doi}"
+                    pdf_urls.append(acm_pdf_url)
+                    logger.info(f"Generated ACM PDF URL: {acm_pdf_url}")
+
+                # arXiv DOI pattern
+                if "10.48550" in doi:
+                    arxiv_id = doi.split("/")[-1]
+                    arxiv_pdf_url = f"https://arxiv.org/pdf/{arxiv_id}.pdf"
+                    pdf_urls.append(arxiv_pdf_url)
+                    logger.info(f"Generated arXiv PDF URL from DOI: {arxiv_pdf_url}")
+
+                # Generic DOI PDF URL (fallback)
+                if not pdf_urls:
+                    generic_pdf_url = f"https://doi.org/{doi}"
+                    pdf_urls.append(generic_pdf_url)
+                    logger.info(f"Generated generic DOI URL: {generic_pdf_url}")
+
+        # Return the first available PDF URL
+        if pdf_urls:
+            selected_url = pdf_urls[0]
+            logger.info(f"Selected PDF URL: {selected_url}")
+            return selected_url
+
+        logger.info("No PDF URL found for this paper")
+        return None
 
     async def search_papers(
         self,
@@ -221,8 +327,21 @@ class PaperSearch:
             return []
 
         try:
+            # Request additional fields including externalIds for better PDF URL extraction
             results = self.s2_client.search_paper(
-                query=query, sort=SEMANTIC_SCHOLAR_SORT, bulk=True
+                query=query,
+                sort=SEMANTIC_SCHOLAR_SORT,
+                bulk=True,
+                fields=[
+                    "title",
+                    "authors",
+                    "year",
+                    "abstract",
+                    "url",
+                    "openAccessPdf",
+                    "externalIds",
+                    "citationCount",
+                ],
             )
 
             if not results or not results.items:
@@ -252,11 +371,15 @@ class PaperSearch:
                         else:
                             author_names.append(str(author))
 
-                # Try to get PDF URL from openAccessPdf
-                pdf_url = None
-                open_access_pdf = getattr(paper, "openAccessPdf", None)
-                if open_access_pdf and hasattr(open_access_pdf, "url"):
-                    pdf_url = open_access_pdf.url
+                # Use enhanced PDF URL extraction method if enabled
+                if ENABLE_PDF_URL_ENHANCEMENT:
+                    pdf_url = self._extract_enhanced_pdf_urls(paper)
+                else:
+                    # Fallback to original method
+                    pdf_url = None
+                    open_access_pdf = getattr(paper, "openAccessPdf", None)
+                    if open_access_pdf and hasattr(open_access_pdf, "url"):
+                        pdf_url = open_access_pdf.url
 
                 # Calculate score based on citation count, but keep it balanced with arXiv
                 # Base score of 1.0, with small bonus for high citations

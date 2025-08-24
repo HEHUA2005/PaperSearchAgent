@@ -219,6 +219,9 @@ class PaperSearch:
                 # arXiv DOI pattern
                 if "10.48550" in doi:
                     arxiv_id = doi.split("/")[-1]
+                    # Remove 'arXiv.' prefix if present
+                    if arxiv_id.startswith("arXiv."):
+                        arxiv_id = arxiv_id[6:]  # Remove 'arXiv.' prefix
                     arxiv_pdf_url = f"https://arxiv.org/pdf/{arxiv_id}.pdf"
                     pdf_urls.append(arxiv_pdf_url)
                     logger.info(f"Generated arXiv PDF URL from DOI: {arxiv_pdf_url}")

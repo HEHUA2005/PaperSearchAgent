@@ -13,10 +13,19 @@ AGENT_URL = os.getenv("AGENT_URL", f"http://localhost:{PORT}/")
 # Paper Search Configuration
 ARXIV_CATEGORIES = os.getenv("ARXIV_CATEGORIES", "cs.AI,cs.LG,cs.CL")
 SEMANTIC_SCHOLAR_API_KEY = os.getenv("SEMANTIC_SCHOLAR_API_KEY")
-ENABLE_SEMANTIC_SCHOLAR = (
-    os.getenv("ENABLE_SEMANTIC_SCHOLAR", "false").lower() == "true"
-)
+ENABLE_SEMANTIC_SCHOLAR = os.getenv("ENABLE_SEMANTIC_SCHOLAR", "true").lower() == "true"
 MAX_SEARCH_RESULTS = int(os.getenv("MAX_SEARCH_RESULTS", "5"))
+
+# Search Source Configuration (single source only)
+SEARCH_SOURCE = os.getenv("SEARCH_SOURCE", "semantic_scholar").strip().lower()
+SEMANTIC_SCHOLAR_SORT = os.getenv("SEMANTIC_SCHOLAR_SORT", "citationCount:desc")
+
+# Validate search source
+if SEARCH_SOURCE not in ["arxiv", "semantic_scholar"]:
+    print(
+        f"WARNING: Invalid SEARCH_SOURCE '{SEARCH_SOURCE}'. Using 'semantic_scholar' as default."
+    )
+    SEARCH_SOURCE = "semantic_scholar"
 
 # LLM Configuration for Query Analysis
 LLM_API_KEY = os.getenv("LLM_API_KEY")

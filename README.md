@@ -43,6 +43,7 @@ PaperSearchAgent/
 - arXiv API 访问
 - Semantic Scholar API 密钥（可选）
 - OpenAI API 密钥（用于查询分析，**必需**）
+- 推荐使用`uv`来管理环境
 
 ### 安装步骤
 
@@ -54,7 +55,7 @@ PaperSearchAgent/
 
 2. **安装依赖**
    ```bash
-   pip install -e .
+  uv sync 
    ```
 
 3. **配置环境变量**
@@ -69,10 +70,10 @@ PaperSearchAgent/
 
 ```bash
 # 使用启动脚本
-./start_agent.sh
+bash start_agent.sh
 
 # 或直接运行
-python -m __main__
+uv run python -m __main__
 ```
 
 服务将在 http://localhost:9998 启动。

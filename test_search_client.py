@@ -8,7 +8,7 @@ from a2a.types import MessageSendParams, SendMessageRequest
 
 
 async def test_paper_search_agent():
-    base_url = "http://localhost:10000"
+    base_url = "http://localhost:9999"
 
     async with httpx.AsyncClient() as httpx_client:
         # Initialize A2ACardResolver

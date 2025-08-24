@@ -3,6 +3,7 @@ Agent Executor module for the Paper Search Agent.
 """
 
 import logging
+import os
 from typing import Dict, List, Optional, Tuple
 
 from a2a.server.agent_execution import AgentExecutor, RequestContext
@@ -46,6 +47,7 @@ class PaperSearchAgent:
             max_tokens=LLM_MAX_TOKENS,
             temperature=LLM_TEMPERATURE,
         )
+        self.max_search_results = int(os.getenv("MAX_SEARCH_RESULTS", "5"))
         logger.info("Query analyzer initialized")
 
     async def analyze_query(self, query: str) -> Tuple[bool, str, Optional[List[str]]]:
@@ -77,20 +79,22 @@ class PaperSearchAgent:
 
     async def handle_search(self, query: str) -> str:
         """Handle search request."""
-        logger.info(f"Handling search for query: {query}")
+        logger.info(f"Handling search for original query: {query}")
 
         # Analyze query first if query analyzer is enabled
         is_valid, search_query, keywords = await self.analyze_query(query)
-
         if not is_valid:
             return "Your query seems unclear or incomplete. Please provide more specific details about the academic papers you're looking for."
 
         # If query was modified (e.g., translated from Chinese to English), log it
         if search_query != query:
-            logger.info(f"Query modified from '{query}' to '{search_query}'")
+            logger.info(f"Query modified from '{query}' to these keywords:'{keywords}'")
 
-        # Search for papers using the processed query
-        search_results = await self.search_papers(search_query)
+        # Search for papers using the processed query (use search_query, not keywords list)
+        keywords_string = ", ".join(keywords) if keywords else ""
+        search_results = await self.search_papers(
+            query=keywords_string, max_results=self.max_search_results
+        )
 
         if not search_results:
             # If no results with processed query, try with original query as fallback

@@ -121,7 +121,7 @@ class QueryAnalyzer:
             If the query is in a non-English language (especially Chinese), translate the key concepts to English.
             If the query is unclear or doesn't appear to be a search for academic papers, indicate that it's invalid.
             请你注意, 在请求中, 可能包含一些复杂的项目格式等等, 在这种情况下, 请你重点关注请求中"你的任务"等关键词, 避免错误判断请求的有效性
-            
+
 
             Query: "{query}"
 
@@ -132,6 +132,8 @@ class QueryAnalyzer:
                 "keywords": ["keyword1", "keyword2", ...],
                 "message": "explanation or error message"
             }}
+            其中, keywords部分尽量保证还原Query中的请求, 不要添加一些联想出来的内容, 也避免key words出现重复的单词
+            注意, keywords中每个词语应当是独立的, 且是学术短语, 如"machine learning", "attention" 等, 不要出现"ability", "mechanisms"等不明确的东西
             """
 
             # Prepare messages for the OpenAI API

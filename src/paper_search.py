@@ -16,7 +16,14 @@ from config import (
     SEARCH_SOURCE,
     SEMANTIC_SCHOLAR_SORT,
     ENABLE_PDF_URL_ENHANCEMENT,
+    REQUIRE_PDF_DOWNLOAD,
+    TRUSTED_PDF_SOURCES,
 )
+
+# Backup search configuration
+MAX_BACKUP_ATTEMPTS = 5  # Maximum number of backup search attempts
+BACKUP_BATCH_SIZE = 20  # Number of papers to fetch in each backup attempt
+MAX_TOTAL_PAPERS_TO_PROCESS = 200  # Maximum total papers to process during backup
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -100,6 +107,31 @@ class PaperSearch:
         else:
             self.s2_client = None
             logger.info("Semantic Scholar is disabled")
+
+    def _is_trusted_pdf_url(self, url: str) -> bool:
+        """
+        Check if a PDF URL is from a trusted source that allows direct downloads.
+
+        Args:
+            url: PDF URL to check
+
+        Returns:
+            True if the URL is from a trusted source, False otherwise
+        """
+        if not url:
+            return False
+
+        # Check if URL is from a trusted source
+        for trusted_source in TRUSTED_PDF_SOURCES:
+            if trusted_source in url:
+                return True
+
+        # ArXiv URLs are always trusted
+        if "arxiv.org/pdf" in url:
+            return True
+
+        # Other URLs are not trusted (may require payment or authentication)
+        return False
 
     def _extract_enhanced_pdf_urls(self, paper) -> Optional[str]:
         """
@@ -197,14 +229,160 @@ class PaperSearch:
                     pdf_urls.append(generic_pdf_url)
                     logger.info(f"Generated generic DOI URL: {generic_pdf_url}")
 
-        # Return the first available PDF URL
-        if pdf_urls:
-            selected_url = pdf_urls[0]
-            logger.info(f"Selected PDF URL: {selected_url}")
+        # Filter and return only trusted PDF URLs
+        trusted_pdf_urls = []
+        for url in pdf_urls:
+            if self._is_trusted_pdf_url(url):
+                trusted_pdf_urls.append(url)
+                logger.info(f"Found trusted PDF URL: {url}")
+
+        # Return the first trusted PDF URL
+        if trusted_pdf_urls:
+            selected_url = trusted_pdf_urls[0]
+            logger.info(f"Selected trusted PDF URL: {selected_url}")
             return selected_url
 
-        logger.info("No PDF URL found for this paper")
+        logger.info("No trusted PDF URL found for this paper")
         return None
+
+    def _process_semantic_scholar_paper(self, paper) -> Optional[PaperSearchResult]:
+        """
+        Process a single Semantic Scholar paper and return PaperSearchResult if it has trusted PDF URL.
+
+        Args:
+            paper: Semantic Scholar paper object
+
+        Returns:
+            PaperSearchResult if paper has trusted PDF URL, None otherwise
+        """
+        # Safely extract attributes using getattr to prevent crashes
+        title = getattr(paper, "title", "Unknown Title")
+        authors_list = getattr(paper, "authors", [])
+        year = getattr(paper, "year", None)
+        citation_count = getattr(paper, "citationCount", 0)
+        abstract = getattr(paper, "abstract", "")
+        url = getattr(paper, "url", "")
+        paper_id = getattr(paper, "paperId", None)
+
+        # Extract author names safely
+        author_names = []
+        if authors_list:
+            for author in authors_list:
+                if hasattr(author, "name"):
+                    author_names.append(author.name)
+                else:
+                    author_names.append(str(author))
+
+        # Use enhanced PDF URL extraction method if enabled
+        if ENABLE_PDF_URL_ENHANCEMENT:
+            pdf_url = self._extract_enhanced_pdf_urls(paper)
+        else:
+            # Fallback to original method
+            pdf_url = None
+            open_access_pdf = getattr(paper, "openAccessPdf", None)
+            if open_access_pdf and hasattr(open_access_pdf, "url"):
+                pdf_url = open_access_pdf.url
+
+        # Only return paper if it has trusted PDF URL when REQUIRE_PDF_DOWNLOAD is enabled
+        if REQUIRE_PDF_DOWNLOAD:
+            if not pdf_url or not self._is_trusted_pdf_url(pdf_url):
+                logger.debug(f"Skipped paper without trusted PDF URL: {title[:50]}...")
+                return None
+
+        # Calculate score based on citation count, but keep it balanced with arXiv
+        # Base score of 1.0, with small bonus for high citations
+        if citation_count:
+            # Add small bonus for citations, max 0.2 bonus
+            citation_bonus = min(citation_count / 10000, 0.2)
+            score = 1.0 + citation_bonus
+        else:
+            score = 1.0
+
+        # Create PaperSearchResult
+        paper_result = PaperSearchResult(
+            title=title,
+            authors=author_names,
+            abstract=abstract,
+            url=url,
+            pdf_url=pdf_url,
+            year=year,
+            source="semantic_scholar",
+            paper_id=paper_id,
+            score=score,
+        )
+
+        logger.info(f"Processed paper with trusted PDF URL: {title[:50]}...")
+        return paper_result
+
+    async def _fetch_additional_papers(
+        self, query: str, max_results: int, current_count: int, processed_papers: List
+    ) -> List[PaperSearchResult]:
+        """
+        Fetch additional papers from the remaining papers in the initial large search.
+        Since Semantic Scholar API doesn't support offset, we use a larger initial search
+        and process the remaining papers.
+
+        Args:
+            query: Search query
+            max_results: Target number of results
+            current_count: Current number of valid papers found
+            processed_papers: List of all papers from initial search
+
+        Returns:
+            List of additional PaperSearchResult objects
+        """
+        additional_papers = []
+        papers_needed = max_results - current_count
+
+        logger.info(
+            f"Processing remaining papers to find {papers_needed} more papers with trusted PDFs"
+        )
+
+        # Process remaining papers beyond the initial max_results limit
+        remaining_papers = (
+            processed_papers[max_results:]
+            if len(processed_papers) > max_results
+            else []
+        )
+
+        if not remaining_papers:
+            logger.info("No additional papers available to process")
+            return additional_papers
+
+        logger.info(
+            f"Processing {len(remaining_papers)} additional papers from initial search"
+        )
+
+        papers_processed = 0
+        for paper in remaining_papers:
+            if len(additional_papers) >= papers_needed:
+                logger.info("Reached target number of additional papers")
+                break
+
+            papers_processed += 1
+            paper_result = self._process_semantic_scholar_paper(paper)
+            if paper_result:
+                additional_papers.append(paper_result)
+                logger.info(f"Added additional paper: {paper_result.title[:50]}...")
+
+            # Limit processing to avoid excessive computation
+            if papers_processed >= MAX_TOTAL_PAPERS_TO_PROCESS:
+                logger.info(
+                    f"Reached maximum processing limit of {MAX_TOTAL_PAPERS_TO_PROCESS} papers"
+                )
+                break
+
+        final_count = len(additional_papers) + current_count
+        logger.info(
+            f"Additional paper processing completed. Found {len(additional_papers)} additional papers. Total: {final_count}/{max_results}"
+        )
+
+        if final_count < max_results:
+            logger.warning(
+                f"Could not find enough papers with trusted PDF URLs. Found {final_count}/{max_results}"
+            )
+
+        return additional_papers
 
     async def search_papers(
         self,
@@ -303,7 +481,25 @@ class PaperSearch:
                 score=1.0,  # Equal base score for arXiv results
             )
 
-            results.append(paper_result)
+            # Only add papers with trusted PDF URLs if REQUIRE_PDF_DOWNLOAD is enabled
+            if REQUIRE_PDF_DOWNLOAD:
+                if paper_result.pdf_url and self._is_trusted_pdf_url(
+                    paper_result.pdf_url
+                ):
+                    results.append(paper_result)
+                    logger.info(
+                        f"Added arXiv paper with trusted PDF URL: {result.title[:50]}..."
+                    )
+                else:
+                    logger.info(
+                        f"Skipped arXiv paper without trusted PDF URL: {result.title[:50]}..."
+                    )
+            else:
+                # Add all papers if REQUIRE_PDF_DOWNLOAD is disabled
+                results.append(paper_result)
+
+        filtered_count = len(results)
+        logger.info(f"Found {filtered_count} arXiv papers with trusted PDF URLs")
 
         return results
 
@@ -327,11 +523,16 @@ class PaperSearch:
             return []
 
         try:
+            # Request a larger batch initially to have more papers to choose from
+            # when filtering for trusted PDF URLs
+            initial_limit = max_results * 10 if REQUIRE_PDF_DOWNLOAD else max_results
+
             # Request additional fields including externalIds for better PDF URL extraction
             results = self.s2_client.search_paper(
                 query=query,
                 sort=SEMANTIC_SCHOLAR_SORT,
                 bulk=True,
+                limit=initial_limit,
                 fields=[
                     "title",
                     "authors",
@@ -348,72 +549,52 @@ class PaperSearch:
                 logger.info(f"No results found for query: {query}")
                 return []
 
-            # Limit results to max_results
-            papers = results.items[:max_results]
+            all_papers = results.items
+            logger.info(f"Retrieved {len(all_papers)} papers from Semantic Scholar")
+
             paper_results = []
 
-            for paper in papers:
-                # Safely extract attributes using getattr to prevent crashes
-                title = getattr(paper, "title", "Unknown Title")
-                authors_list = getattr(paper, "authors", [])
-                year = getattr(paper, "year", None)
-                citation_count = getattr(paper, "citationCount", 0)
-                abstract = getattr(paper, "abstract", "")
-                url = getattr(paper, "url", "")
-                paper_id = getattr(paper, "paperId", None)
+            # Process papers in order until we have enough with trusted PDFs
+            for i, paper in enumerate(all_papers):
+                if len(paper_results) >= max_results:
+                    break
 
-                # Extract author names safely
-                author_names = []
-                if authors_list:
-                    for author in authors_list:
-                        if hasattr(author, "name"):
-                            author_names.append(author.name)
-                        else:
-                            author_names.append(str(author))
-
-                # Use enhanced PDF URL extraction method if enabled
-                if ENABLE_PDF_URL_ENHANCEMENT:
-                    pdf_url = self._extract_enhanced_pdf_urls(paper)
-                else:
-                    # Fallback to original method
-                    pdf_url = None
-                    open_access_pdf = getattr(paper, "openAccessPdf", None)
-                    if open_access_pdf and hasattr(open_access_pdf, "url"):
-                        pdf_url = open_access_pdf.url
-
-                # Calculate score based on citation count, but keep it balanced with arXiv
-                # Base score of 1.0, with small bonus for high citations
-                if citation_count:
-                    # Add small bonus for citations, max 0.2 bonus
-                    citation_bonus = min(citation_count / 10000, 0.2)
-                    score = 1.0 + citation_bonus
-                else:
-                    score = 1.0
-
-                # Create PaperSearchResult
-                paper_result = PaperSearchResult(
-                    title=title,
-                    authors=author_names,
-                    abstract=abstract,
-                    url=url,
-                    pdf_url=pdf_url,
-                    year=year,
-                    source="semantic_scholar",
-                    paper_id=paper_id,
-                    score=score,
-                )
-
-                paper_results.append(paper_result)
-
-                # Log citation count if available
-                if citation_count:
-                    logger.info(
-                        f"Found paper '{title[:50]}...' with {citation_count} citations"
+                paper_result = self._process_semantic_scholar_paper(paper)
+                if paper_result:
+                    paper_results.append(paper_result)
+                elif REQUIRE_PDF_DOWNLOAD:
+                    # Log when papers are skipped due to PDF requirements
+                    title = getattr(paper, "title", "Unknown Title")
+                    logger.debug(
+                        f"Skipped paper without trusted PDF URL: {title[:50]}..."
                     )
 
+            filtered_count = len(paper_results)
             logger.info(
-                f"Successfully found {len(paper_results)} papers from Semantic Scholar"
+                f"Successfully found {filtered_count} papers from Semantic Scholar with trusted PDF URLs"
             )
+
+            # Use enhanced backup logic if we need more papers and have more to process
+            if (
+                REQUIRE_PDF_DOWNLOAD
+                and filtered_count < max_results
+                and len(all_papers) > filtered_count
+            ):
+                logger.info(
+                    f"Need {max_results - filtered_count} more papers. Processing remaining papers..."
+                )
+                try:
+                    additional_papers = await self._fetch_additional_papers(
+                        query, max_results, filtered_count, all_papers
+                    )
+                    paper_results.extend(additional_papers)
+                    logger.info(
+                        f"Additional processing added {len(additional_papers)} papers. "
+                        f"Total: {len(paper_results)}/{max_results}"
+                    )
+                except Exception as e:
+                    logger.error(f"Error in additional paper processing: {e}")
+
             return paper_results
 
         except Exception as e:

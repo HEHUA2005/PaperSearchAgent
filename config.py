@@ -25,6 +25,16 @@ ENABLE_PDF_URL_ENHANCEMENT = (
     os.getenv("ENABLE_PDF_URL_ENHANCEMENT", "true").lower() == "true"
 )
 
+# Filter papers without direct PDF download links
+REQUIRE_PDF_DOWNLOAD = os.getenv("REQUIRE_PDF_DOWNLOAD", "true").lower() == "true"
+
+# List of trusted PDF sources that are known to provide direct downloads
+TRUSTED_PDF_SOURCES = [
+    "arxiv.org/pdf",
+    "biorxiv.org/content",
+    "ncbi.nlm.nih.gov/pmc/articles",
+]
+
 # Validate search source
 if SEARCH_SOURCE not in ["arxiv", "semantic_scholar"]:
     print(

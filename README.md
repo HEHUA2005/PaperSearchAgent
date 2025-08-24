@@ -145,6 +145,14 @@ curl -X POST http://localhost:9998/api/jsonrpc \
       - 其他通用 DOI 链接
   - 当禁用时，仅使用 Semantic Scholar 的 openAccessPdf 字段
 
+- `REQUIRE_PDF_DOWNLOAD`：只显示有可直接下载 PDF 的论文（默认：true）
+  - 当启用时，系统会过滤掉没有可直接下载 PDF 的论文（如付费墙后的论文）
+  - 系统会优先显示来自以下可信任来源的论文：
+    - arXiv（计算机科学、物理学等预印本）
+    - bioRxiv/medRxiv（生物医学预印本）
+    - PubMed Central（开放获取医学论文）
+  - 当禁用时，系统会显示所有找到的论文，无论是否有可下载的 PDF
+
 ## A2A 协议集成
 
 PaperSearchAgent 完全兼容 A2A (Agent-to-Agent) 通信协议：
